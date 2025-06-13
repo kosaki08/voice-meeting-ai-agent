@@ -9,8 +9,10 @@
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsup src/index.ts --format esm,cjs --dts",
+    "build": "tsup",
     "test": "jest",
+    "test:ci": "jest --ci",
+    "test:experimental": "NODE_OPTIONS=\"--experimental-vm-modules\" jest",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write --ignore-unknown ."
   },
@@ -43,6 +45,7 @@
     "jest-mock-extended": "4.0.0-beta1",
     "nock": "^14.0.5",
     "prettier": "^3.5.3",
+    "ts-jest": "^29.4.0",
     "ts-node": "^10.9.2",
     "tsup": "^8.5.0",
     "tsx": "^4.20.3",

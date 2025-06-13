@@ -1,11 +1,15 @@
 import js from "@eslint/js";
 import tseslint from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
+import jestPlugin from "eslint-plugin-jest";
 import prettier from "eslint-plugin-prettier";
 import globals from "globals";
 
 export default [
   js.configs.recommended,
+  {
+    ignores: ["dist/**", "node_modules/**", "coverage/**"],
+  },
   {
     files: ["**/*.ts", "**/*.tsx"],
     languageOptions: {
@@ -20,6 +24,13 @@ export default [
     plugins: { "@typescript-eslint": tseslint },
     rules: {
       ...tseslint.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          varsIgnorePattern: "^_",
+          argsIgnorePattern: "^_",
+        },
+      ],
     },
   },
   {
@@ -30,8 +41,14 @@ export default [
   },
   {
     files: ["**/*.test.ts", "**/*.spec.ts", "tests/**/*.ts"],
+    plugins: {
+      jest: jestPlugin,
+    },
     languageOptions: {
-      globals: { ...globals.node, ...globals.jest },
+      globals: { ...globals.node, ...globals.jest, fail: "readonly" },
+    },
+    rules: {
+      ...jestPlugin.configs["flat/recommended"].rules,
     },
   },
 ];
