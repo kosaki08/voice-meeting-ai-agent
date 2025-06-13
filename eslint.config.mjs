@@ -8,7 +8,7 @@ import globals from "globals";
 export default [
   js.configs.recommended,
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**"],
+    ignores: ["dist/**", "node_modules/**", "coverage/**", "playground.ts", "**/*.playground.ts"],
   },
   {
     files: ["**/*.ts", "**/*.tsx"],
@@ -29,6 +29,7 @@ export default [
         {
           varsIgnorePattern: "^_",
           argsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
         },
       ],
     },
@@ -49,6 +50,8 @@ export default [
     },
     rules: {
       ...jestPlugin.configs["flat/recommended"].rules,
+      "@typescript-eslint/no-explicit-any": "off",
+      "jest/no-conditional-expect": "off",
     },
   },
 ];

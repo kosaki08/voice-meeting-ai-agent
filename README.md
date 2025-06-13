@@ -46,3 +46,13 @@ pnpm build     # ビルド
 pnpm lint      # ESLint
 pnpm format    # Prettier
 ```
+
+## 環境変数の設定
+
+```bash
+cp .env.local.example .env.local
+```
+
+## ライセンス
+
+MIT License
