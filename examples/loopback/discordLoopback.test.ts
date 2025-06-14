@@ -10,14 +10,14 @@ dotenv.config({
 });
 
 const {
-  DISCORD_TOKEN_RECEIVER, // 受信用 Bot (Bot A)
+  DISCORD_BOT_TOKEN, // 受信用 Bot (Bot A)
   DISCORD_TOKEN_SENDER, // 送信用 Bot (Bot B)
-  GUILD_ID,
-  VC_ID,
+  DISCORD_GUILD_ID,
+  DISCORD_VOICE_CHANNEL_ID,
 } = process.env;
 
 // Bot Bが設定されている場合のみ有効
-const isE2ETestEnabled = DISCORD_TOKEN_RECEIVER && DISCORD_TOKEN_SENDER && GUILD_ID && VC_ID;
+const isE2ETestEnabled = DISCORD_BOT_TOKEN && DISCORD_TOKEN_SENDER && DISCORD_GUILD_ID && DISCORD_VOICE_CHANNEL_ID;
 const describeIfEnabled = isE2ETestEnabled ? describe : describe.skip;
 
 describeIfEnabled("E2E – Bot B sends test tone, Bot A receives", () => {
@@ -51,7 +51,7 @@ describeIfEnabled("E2E – Bot B sends test tone, Bot A receives", () => {
     });
 
     // 並行してログイン
-    await Promise.all([recvClient.login(DISCORD_TOKEN_RECEIVER), sendClient.login(DISCORD_TOKEN_SENDER)]);
+    await Promise.all([recvClient.login(DISCORD_BOT_TOKEN), sendClient.login(DISCORD_TOKEN_SENDER)]);
 
     // 両方のクライアントがreadyになるまで待機（タイムアウト付き）
     const readyTimeout = 10000; // 10秒のタイムアウト
@@ -112,26 +112,34 @@ describeIfEnabled("E2E – Bot B sends test tone, Bot A receives", () => {
   });
 
   test("receives expected PCM chunks from Bot B", async () => {
-    const guild = await recvClient.guilds.fetch(GUILD_ID!);
-    const channel = (await guild.channels.fetch(VC_ID!)) as VoiceChannel;
+    if (!DISCORD_GUILD_ID || !DISCORD_VOICE_CHANNEL_ID) {
+      throw new Error("Environment variables DISCORD_GUILD_ID and DISCORD_VOICE_CHANNEL_ID must be set");
+    }
+
+    const guild = await recvClient.guilds.fetch(DISCORD_GUILD_ID);
+    const channel = (await guild.channels.fetch(DISCORD_VOICE_CHANNEL_ID)) as VoiceChannel;
+
+    if (!recvClient.user) {
+      throw new Error("Receiver client user is not available");
+    }
 
     // Bot A – 受信用アダプター
     adapter = new DiscordAdapter({
       guildId: guild.id,
       channelId: channel.id,
       adapterCreator: guild.voiceAdapterCreator,
-      selfId: recvClient.user!.id,
+      selfId: recvClient.user.id,
     });
 
     // Bot B – 送信用接続
-    const sendGuild = sendClient.guilds.cache.get(GUILD_ID!);
+    const sendGuild = sendClient.guilds.cache.get(DISCORD_GUILD_ID);
     if (!sendGuild) {
-      throw new Error(`Sender bot is not in guild ${GUILD_ID}`);
+      throw new Error(`Sender bot is not in guild ${DISCORD_GUILD_ID}`);
     }
 
     const sendConnection = joinVoiceChannel({
-      guildId: GUILD_ID!,
-      channelId: VC_ID!,
+      guildId: DISCORD_GUILD_ID,
+      channelId: DISCORD_VOICE_CHANNEL_ID,
       adapterCreator: sendGuild.voiceAdapterCreator,
       selfDeaf: false,
       selfMute: false,
@@ -180,7 +188,7 @@ describeIfEnabled("E2E – Bot B sends test tone, Bot A receives", () => {
 
     if (chunks.length > 0) {
       // チャンクの内容を検証
-      chunks.forEach((chunk, _index) => {
+      chunks.forEach((chunk: any, _index: number) => {
         expect(chunk.data).toBeInstanceOf(Buffer);
         expect(chunk.sampleRate).toBe(48000);
         expect(chunk.data.length).toBe(1920); // 20ms of 48kHz mono PCM

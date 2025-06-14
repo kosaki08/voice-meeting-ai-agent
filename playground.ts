@@ -11,13 +11,13 @@ dotenv.config({ path: ".env.local" });
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
   });
 
-  await client.login(process.env.DISCORD_TOKEN_RECEIVER);
+  await client.login(process.env.DISCORD_BOT_TOKEN);
 
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user?.tag}!`);
 
-    const guild = await client.guilds.fetch(process.env.GUILD_ID!);
-    const channel = await guild.channels.fetch(process.env.VC_ID!);
+    const guild = await client.guilds.fetch(process.env.DISCORD_GUILD_ID!);
+    const channel = await guild.channels.fetch(process.env.DISCORD_CHANNEL_ID!);
 
     if (!channel?.isVoiceBased()) {
       throw new Error("Not a voice channel");

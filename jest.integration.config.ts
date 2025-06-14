@@ -15,12 +15,20 @@ const config: JestConfigWithTsJest = {
     ],
   },
   moduleNameMapper: {
+    // 先に.js拡張子を処理
+    "^@/(.+)\\.js$": "<rootDir>/src/$1",
+    "^@ports/(.+)\\.js$": "<rootDir>/src/ports/$1",
+    "^@adapters/(.+)\\.js$": "<rootDir>/src/adapters/$1",
+    "^@core/(.+)\\.js$": "<rootDir>/src/core/$1",
+    "^@utils/(.+)\\.js$": "<rootDir>/src/utils/$1",
+    // 拡張子なしのパス
     "^@/(.*)$": "<rootDir>/src/$1",
     "^@ports/(.*)$": "<rootDir>/src/ports/$1",
     "^@adapters/(.*)$": "<rootDir>/src/adapters/$1",
-    "^@domain/(.*)$": "<rootDir>/src/domain/$1",
-    // src配下のみの相対パスを変換
-    "^((?:\\.{1,2}/)+src/.*)\\.js$": "$1.ts",
+    "^@core/(.*)$": "<rootDir>/src/core/$1",
+    "^@utils/(.*)$": "<rootDir>/src/utils/$1",
+    // 相対パスの.js拡張子を除去
+    "^(\\.{1,2}/.+)\\.js$": "$1",
   },
   testMatch: ["<rootDir>/tests/integration/**/*.test.ts"],
   testTimeout: 30000, // 統合テストは長時間かかる可能性があるため

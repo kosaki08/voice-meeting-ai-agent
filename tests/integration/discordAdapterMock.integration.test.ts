@@ -1,86 +1,120 @@
-import path from "path";
 import { DiscordAdapter } from "@/adapters/audio/discordAdapter";
-import { Client, GatewayIntentBits, VoiceChannel } from "discord.js";
-import dotenv from "dotenv";
+import type { PCMChunk } from "@/ports/AudioSourcePort";
 
-dotenv.config({
-  path: path.resolve(process.cwd(), ".env.local"),
-});
+// モジュールのモック
+jest.mock("@/adapters/audio/discord/ConnectionManager", () => ({
+  ConnectionManager: jest.fn().mockImplementation(() => ({
+    connect: jest.fn().mockResolvedValue({
+      receiver: {
+        speaking: { on: jest.fn() },
+      },
+    }),
+    disconnect: jest.fn(),
+    isConnected: jest.fn().mockReturnValue(true),
+    getConnection: jest.fn(),
+  })),
+}));
 
-const DISCORD_TOKEN_RECEIVER = process.env.DISCORD_TOKEN_RECEIVER;
-const GUILD_ID = process.env.GUILD_ID;
-const VC_ID = process.env.VC_ID;
+jest.mock("@/adapters/audio/discord/ChunkStreamer", () => ({
+  ChunkStreamer: jest.fn().mockImplementation(() => ({
+    registerUser: jest.fn(),
+    unregisterUser: jest.fn(),
+    getNextChunk: jest.fn().mockResolvedValue(null),
+    hasActiveStreams: jest.fn().mockReturnValue(false),
+    clear: jest.fn(),
+    getConfig: jest.fn().mockReturnValue({
+      frameSize: 960,
+      sampleRate: 48000,
+      bytesPerChunk: 1920,
+    }),
+  })),
+}));
 
-const isIntegrationTestEnabled = DISCORD_TOKEN_RECEIVER && GUILD_ID && VC_ID;
-const describeIfEnabled = isIntegrationTestEnabled ? describe : describe.skip;
-
-describeIfEnabled("DiscordAdapter Integration with Mock Audio", () => {
-  let client: Client;
+describe("DiscordAdapter Mock Integration Tests", () => {
   let adapter: DiscordAdapter;
 
-  beforeAll(async () => {
-    if (!isIntegrationTestEnabled) return;
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
 
-    client = new Client({
-      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.GuildMessages],
-    });
-
-    await client.login(DISCORD_TOKEN_RECEIVER);
-
-    await new Promise<void>((resolve) => {
-      if (client.isReady()) {
-        resolve();
-        return;
-      }
-      client.once("ready", () => {
-        resolve();
-      });
-    });
-  }, 30000);
-
-  afterAll(async () => {
-    if (!isIntegrationTestEnabled) return;
-
-    try {
-      if (adapter) {
-        (adapter as any).stop?.();
-      }
-
-      if (client) {
-        await client.destroy();
-      }
-    } catch (error) {
-      console.error("Cleanup error:", error);
+  afterEach(() => {
+    if (adapter) {
+      adapter.stop();
     }
-  }, 5000);
+  });
 
-  test("should connect and handle connection lifecycle", async () => {
-    const guild = await client.guilds.fetch(GUILD_ID!);
-    const channel = (await guild.channels.fetch(VC_ID!)) as VoiceChannel;
-
+  it("should handle audio streaming with test options", async () => {
     adapter = new DiscordAdapter({
-      guildId: guild.id,
-      channelId: channel.id,
-      adapterCreator: guild.voiceAdapterCreator,
-      selfId: client.user!.id,
+      guildId: "test-guild",
+      channelId: "test-channel",
+      adapterCreator: {} as any,
+      selfId: "test-bot",
+      test: { idleSleepMs: 0, maxChunks: 3 },
     });
 
-    // pull()を呼び出して接続を確立
-    const pullGenerator = adapter.pull();
-    pullGenerator[Symbol.asyncIterator]();
+    const chunks: PCMChunk[] = [];
 
-    // 接続が確立されるまで待機
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    // ChunkStreamerのモックから3つのチャンクを返すように設定
+    const { ChunkStreamer } = jest.requireMock("@/adapters/audio/discord/ChunkStreamer");
+    const mockInstance = ChunkStreamer.mock.results[0].value;
 
-    // 接続の確認
-    const connection = (adapter as any).connection;
+    mockInstance.getNextChunk
+      .mockResolvedValueOnce({ userId: "user1", data: Buffer.alloc(1920) })
+      .mockResolvedValueOnce({ userId: "user2", data: Buffer.alloc(1920) })
+      .mockResolvedValueOnce({ userId: "user3", data: Buffer.alloc(1920) });
 
-    if (connection) {
-      // Speakingイベントが正しく設定されていることを確認
-      expect(connection.receiver.speaking.listenerCount("start")).toBeGreaterThan(0);
+    for await (const chunk of adapter.pull()) {
+      chunks.push(chunk);
     }
 
-    // テストとして成功
-    expect(true).toBe(true);
-  }, 10000);
+    expect(chunks).toHaveLength(3);
+    chunks.forEach((chunk) => {
+      expect(chunk.data.length).toBe(1920);
+      expect(chunk.sampleRate).toBe(48000);
+    });
+  });
+
+  it("should handle empty streams gracefully", async () => {
+    adapter = new DiscordAdapter({
+      guildId: "test-guild",
+      channelId: "test-channel",
+      adapterCreator: {} as any,
+      selfId: "test-bot",
+      test: { idleSleepMs: 0, maxChunks: 1 },
+    });
+
+    // ChunkStreamerがnullを返すように設定
+    const { ChunkStreamer } = jest.requireMock("@/adapters/audio/discord/ChunkStreamer");
+    const mockInstance = ChunkStreamer.mock.results[0].value;
+    mockInstance.getNextChunk.mockResolvedValue(null);
+    mockInstance.hasActiveStreams.mockReturnValue(false);
+
+    const startTime = Date.now();
+
+    // タイムアウトで停止
+    setTimeout(() => adapter.stop(), 100);
+
+    const chunks: PCMChunk[] = [];
+    for await (const chunk of adapter.pull()) {
+      chunks.push(chunk);
+    }
+
+    const elapsed = Date.now() - startTime;
+    expect(elapsed).toBeGreaterThanOrEqual(100);
+    expect(chunks).toHaveLength(0);
+  });
+
+  it("should respect configuration options", () => {
+    const opts = {
+      guildId: "custom-guild",
+      channelId: "custom-channel",
+      adapterCreator: {} as any,
+      selfId: "custom-bot",
+    };
+
+    adapter = new DiscordAdapter(opts);
+
+    // 設定が正しく保存されていることを確認（内部状態へのアクセスは避ける）
+    expect(() => adapter.stop()).not.toThrow();
+  });
 });

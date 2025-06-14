@@ -11,7 +11,8 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
       "@ports": path.resolve(__dirname, "src/ports"),
       "@adapters": path.resolve(__dirname, "src/adapters"),
-      "@domain": path.resolve(__dirname, "src/domain"),
+      "@core": path.resolve(__dirname, "src/core"),
+      "@utils": path.resolve(__dirname, "src/utils"),
     };
   },
 });

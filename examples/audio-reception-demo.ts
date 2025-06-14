@@ -9,23 +9,9 @@
  *   2. pnpm example:audio を実行
  *   3. 指定されたVCで話す
  */
-import path from "path";
+import { DiscordAdapter } from "@/adapters/audio/discordAdapter";
+import { env } from "@/core/env";
 import { Client, GatewayIntentBits, VoiceChannel } from "discord.js";
-import dotenv from "dotenv";
-import { DiscordAdapter } from "../src/adapters/audio/discordAdapter.js";
-
-dotenv.config({
-  path: path.resolve(process.cwd(), ".env.local"),
-});
-
-const DISCORD_TOKEN_RECEIVER = process.env.DISCORD_TOKEN_RECEIVER;
-const GUILD_ID = process.env.GUILD_ID;
-const VC_ID = process.env.VC_ID;
-
-if (!DISCORD_TOKEN_RECEIVER || !GUILD_ID || !VC_ID) {
-  console.error("環境変数が設定されていません。.env.localを確認してください。");
-  process.exit(1);
-}
 
 async function audioReceptionDemo() {
   const client = new Client({
@@ -33,23 +19,28 @@ async function audioReceptionDemo() {
   });
 
   console.log("Discordにログイン中...");
-  await client.login(DISCORD_TOKEN_RECEIVER);
+  await client.login(env.DISCORD_BOT_TOKEN);
 
   await new Promise<void>((resolve) => {
     if (client.isReady()) resolve();
     else client.once("ready", () => resolve());
   });
 
-  const guild = await client.guilds.fetch(GUILD_ID!);
-  const channel = (await guild.channels.fetch(VC_ID!)) as VoiceChannel;
+  const guild = await client.guilds.fetch(env.DISCORD_GUILD_ID);
+  const channel = (await guild.channels.fetch(env.DISCORD_CHANNEL_ID)) as VoiceChannel;
 
   console.log(`接続先: ${guild.name} / ${channel.name}`);
+
+  // client.userの存在を保証
+  if (!client.user) {
+    throw new Error("Client user is not available");
+  }
 
   const adapter = new DiscordAdapter({
     guildId: guild.id,
     channelId: channel.id,
     adapterCreator: guild.voiceAdapterCreator,
-    selfId: client.user!.id,
+    selfId: client.user.id,
   });
 
   console.log("音声受信デモ開始 (30秒間)");

@@ -24,6 +24,7 @@ export default [
     plugins: { "@typescript-eslint": tseslint },
     rules: {
       ...tseslint.configs.recommended.rules,
+      ...tseslint.configs.strict.rules,
       "@typescript-eslint/no-unused-vars": [
         "error",
         {
@@ -32,6 +33,10 @@ export default [
           caughtErrorsIgnorePattern: "^_",
         },
       ],
+      // non-null assertionは原則禁止
+      "@typescript-eslint/no-non-null-assertion": "error",
+      // テスト用のクラスなどで必要な場合があるため許可
+      "@typescript-eslint/no-extraneous-class": "off",
     },
   },
   {

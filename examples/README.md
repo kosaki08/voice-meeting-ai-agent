@@ -15,9 +15,9 @@ pnpm example:audio
 `.env.local`に以下を設定してください：
 
 ```
-DISCORD_TOKEN_RECEIVER=your_bot_token
-GUILD_ID=your_guild_id
-VC_ID=your_voice_channel_id
+DISCORD_BOT_TOKEN=your_bot_token
+DISCORD_GUILD_ID=your_guild_id
+DISCORD_VOICE_CHANNEL_ID=your_voice_channel_id
 ```
 
 ### 使用例

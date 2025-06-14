@@ -1,122 +1,63 @@
 # Voice Meeting AI Agent
 
-Discord音声のリアルタイム処理を行うAIエージェントシステム
+[![CI](https://github.com/k2004/voice-meeting-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/k2004/voice-meeting-ai-agent/actions)
+[![codecov](https://codecov.io/gh/k2004/voice-meeting-ai-agent/branch/main/graph/badge.svg)](https://codecov.io/gh/k2004/voice-meeting-ai-agent)
 
-## アーキテクチャ
+Discord Voice Channel から音声をリアルタイムに取得し、後から Whisperでの文字起こしを差し込める形に切り出したプロジェクトです。
 
-Hexagonal Architecture（ポート&アダプタパターン）を採用し、音声入力源の切り替えを容易にしています。
+## デモ
+
+```bash
+pnpm example:audio
+```
+
+## Quick Start
+
+```bash
+pnpm install                      # 依存解決
+cp .env.local.example .env.local  # トークン設定
+pnpm dev                          # 実行
+```
+
+## ディレクトリ構成
+
+詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) に記載しています。
 
 ```
 src/
-├─ core/            # ドメインロジック（純粋関数）
-├─ ports/           # 抽象インターフェース
-├─ adapters/        # 外部依存（Discord, Whisper など）
-└─ index.ts         # エントリーポイント
-tests/              # 単体・統合テスト
+  core/       # ドメインロジック
+  ports/      # 抽象 I/F
+  adapters/   # Discord・Whisper 等
+tests/        # unit / integration
+examples/     # 実行サンプル
 ```
 
 ## 技術スタック
 
-- **TypeScript** - 型安全性とDXの向上
-- **discord.js / @discordjs/voice** - Discord音声チャンネル接続
-- **Hexagonal Architecture** - 依存関係の分離と拡張性
-- **Jest** - 単体テスト・統合テスト
-- **GitHub Actions** - CI/CD
+- **TypeScript 5 / pnpm** - 型安全性とモダンなパッケージ管理
+- **discord.js 14 + @discordjs/voice** - Discord音声チャンネル接続
+- **Hexagonal Architecture** - 音声入力源の切り替えが容易
+- **Jest + ts-jest** - 高速なテスト実行
+- **GitHub Actions CI** - 自動テスト・カバレッジ計測
 
-## 必要環境
+## スクリプト
 
-| Tool    | Version      |
-| ------- | ------------ |
-| Node.js | 18 / 20 / 22 |
-| pnpm    | 10.6.4       |
+| コマンド          | 説明              |
+| ----------------- | ----------------- |
+| `pnpm dev`        | 開発サーバー起動  |
+| `pnpm test`       | 全テスト実行      |
+| `pnpm build`      | tsup ビルド       |
+| `pnpm lint`       | ESLint チェック   |
+| `pnpm type-check` | TypeScript 型検証 |
 
-## セットアップ
+具体例は [examples/README.md](examples/README.md) に記載しています。
 
-```bash
-# 依存関係のインストール
-pnpm install
+## ドキュメント
 
-# 環境変数の設定
-cp .env.local.example .env.local
-# .env.localに Discord Bot の認証情報を設定
-```
+- [アーキテクチャ詳細](docs/ARCHITECTURE.md) - アーキテクチャ詳細
+- [テスト戦略](docs/TESTING.md) - テスト戦略
+- [ループバックテスト](examples/loopback/README.md) - 手動実行用の音声テストサンプル
 
-## 開発
-
-```bash
-pnpm dev         # 開発サーバー起動
-pnpm build       # ビルド
-pnpm test        # テスト実行
-pnpm lint        # ESLint
-pnpm type-check  # 型チェック
-```
-
-## 使用例
-
-音声受信のデモ：
-
-```bash
-pnpm example:audio
-```
-
-詳細は[examples/README.md](examples/README.md)を参照してください。
-pnpm type-check # TypeScript型チェック
-
-````
-
-## テスト戦略
-
-### 単体テスト
-
-各アダプターとコアロジックの動作を独立して検証：
-
-```bash
-pnpm test        # 全テスト実行
-pnpm test:watch  # ウォッチモード
-````
-
-### 統合テスト
-
-実際のDiscord環境での動作を検証（要認証情報）：
-
-```bash
-pnpm test:integration
-```
-
-**注意事項**：
-
-- Discord の仕様により、Bot は他の Bot が送信した音声を受信できません
-- 音声受信テストには、実際の人間ユーザーが VC で話す必要があります
-- 自動テストでは、実接続の確認とモック音声の注入によるテストを組み合わせています
-
-## 動作確認
-
-音声受信が正しく動作することを確認するには：
-
-```bash
-# サンプルコードの実行
-pnpm example:audio
-```
-
-または、以下のような簡単なコードで確認できます：
-
-```typescript
-import { DiscordAdapter } from "./src/adapters/audio/discordAdapter.js";
-
-const adapter = new DiscordAdapter({
-  guildId: "YOUR_GUILD_ID",
-  channelId: "YOUR_CHANNEL_ID",
-  adapterCreator: guild.voiceAdapterCreator,
-  selfId: client.user.id,
-});
-
-for await (const chunk of adapter.pull()) {
-  console.log(`Received ${chunk.data.length} bytes at ${chunk.sampleRate}Hz`);
-}
-```
-
-**注意**: Discord Botは他のBotの音声を受信できません。テストには人間のユーザーがVCで話す必要があります。
-
-## ライセンス
+## License
 
 MIT License

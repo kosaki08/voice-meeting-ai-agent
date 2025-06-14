@@ -13,7 +13,8 @@
       "@/*": ["./src/*"],
       "@ports/*": ["./src/ports/*"],
       "@adapters/*": ["./src/adapters/*"],
-      "@domain/*": ["./src/domain/*"]
+      "@core/*": ["./src/core/*"],
+      "@utils/*": ["./src/utils/*"]
     }
   },
   "include": ["src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts", "jest.config.ts", "jest.integration.config.ts", "tsup.config.ts"],

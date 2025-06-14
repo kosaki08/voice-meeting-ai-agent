@@ -1,30 +1,37 @@
-import { Readable } from "node:stream";
-import {
-  EndBehaviorType,
-  joinVoiceChannel,
-  VoiceConnectionStatus,
-  type DiscordGatewayAdapterCreator,
-  type VoiceConnection,
-} from "@discordjs/voice";
-import prism from "prism-media";
-import { AudioSourcePort, PCMChunk, SampleRate } from "../../ports/AudioSourcePort.js";
+import { ChunkStreamer } from "@adapters/audio/discord/ChunkStreamer.js";
+import { ConnectionManager } from "@adapters/audio/discord/ConnectionManager.js";
+import type { DiscordGatewayAdapterCreator } from "@discordjs/voice";
+import { AudioSourcePort, PCMChunk, SampleRate } from "@ports/AudioSourcePort.js";
 
-// 1 chunk = 20 ms = 48 kHz × 16-bit × 1ch → 1920 byte
-const FRAME_SIZE = 960; // sample /channel /20 ms
 const SAMPLE_RATE: SampleRate = 48_000;
-const BYTES_PER_CHUNK = FRAME_SIZE * 2; // 16-bit = 2 bytes
 
 export interface DiscordAdapterOpts {
   guildId: string;
   channelId: string;
-  adapterCreator: DiscordGatewayAdapterCreator; // interaction.guild.voiceAdapterCreator など
+  adapterCreator: DiscordGatewayAdapterCreator;
   selfId: string;
+  /**
+   * @internal テスト専用。アプリ本番コードで設定する必要はありません
+   */
+  test?: {
+    /** while ループを何 ms で 1 tick するか (既定 20) */
+    idleSleepMs?: number;
+    /** pull() が yield したら自動で停止する最大 chunk 数 (無限) */
+    maxChunks?: number;
+  };
 }
 
+/**
+ * Discord音声チャンネルからPCMチャンクを取得するアダプター
+ * 責務を ConnectionManager（接続管理）と ChunkStreamer（音声処理）に分離
+ */
 export class DiscordAdapter implements AudioSourcePort {
-  private connection?: VoiceConnection;
+  private connectionManager = new ConnectionManager();
+  private chunkStreamer = new ChunkStreamer();
   private opts!: DiscordAdapterOpts;
   private shouldStop = false;
+  private yieldCount = 0;
+  private isListening = false;
 
   constructor(opts?: Partial<DiscordAdapterOpts>) {
     if (opts) this.configure(opts as DiscordAdapterOpts);
@@ -36,134 +43,90 @@ export class DiscordAdapter implements AudioSourcePort {
 
   stop() {
     this.shouldStop = true;
-    if (this.connection) {
-      this.connection.destroy();
-      this.connection = undefined;
+    this.yieldCount = 0;
+    this.isListening = false;
+
+    // リソースのクリーンアップ（多重呼び出しに対応）
+    try {
+      this.chunkStreamer.clear();
+      this.connectionManager.disconnect();
+    } catch (error) {
+      // stop() の多重呼び出しでエラーが発生してもログのみ
+      console.warn("Error during stop():", error);
     }
   }
 
   /**
    * PCM chunk を流す AsyncGenerator
    */
-  async *pull(): AsyncIterable<PCMChunk> {
-    if (!this.opts) throw new Error("DiscordAdapter not configured. Call configure() first");
+  async *pull(signal?: AbortSignal): AsyncIterable<PCMChunk> {
+    this.yieldCount = 0;
+    this.shouldStop = false;
 
-    // VoiceConnection 作成
-    if (!this.connection) {
-      this.connection = joinVoiceChannel({
+    if (!this.opts) {
+      throw new Error("DiscordAdapter not configured. Call configure() first");
+    }
+
+    // 本番環境でテストオプションが設定されていたら警告
+    if (process.env.NODE_ENV !== "test" && this.opts.test) {
+      console.warn("DiscordAdapter test options are ignored in non-test ENV");
+    }
+
+    // AbortSignal のリスナー設定
+    if (signal) {
+      signal.addEventListener("abort", () => {
+        this.stop();
+      });
+    }
+
+    try {
+      // 接続を確立
+      const connection = await this.connectionManager.connect({
         guildId: this.opts.guildId,
         channelId: this.opts.channelId,
         adapterCreator: this.opts.adapterCreator,
-        selfDeaf: false, // 受信必須
+        selfDeaf: false,
         selfMute: true,
       });
 
-      // 接続が確立されるまで待機
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error("Voice connection timeout")), 10000);
-
-        if (this.connection!.state.status === VoiceConnectionStatus.Ready) {
-          clearTimeout(timeout);
-          resolve();
-        } else {
-          this.connection!.once(VoiceConnectionStatus.Ready, () => {
-            clearTimeout(timeout);
-            resolve();
-          });
-        }
-      });
-    }
-
-    const activeStreams = new Map<string, AsyncIterable<Buffer>>();
-
-    // Speaking イベントの監視
-    this.connection.receiver.speaking.on("start", (userId: string) => {
-      const opusStream = this.connection!.receiver.subscribe(userId, {
-        end: {
-          behavior: EndBehaviorType.AfterSilence,
-          duration: 100,
-        },
-      });
-
-      // Opus→PCM デコード
-      let pcm: Readable;
-      try {
-        pcm = opusStream.pipe(
-          new prism.opus.Decoder({
-            frameSize: FRAME_SIZE,
-            channels: 1,
-            rate: SAMPLE_RATE,
-          }),
-        );
-      } catch (_error) {
-        // テスト環境などでprism-mediaが正しくモックされていない場合
-        // opusStreamをそのまま使用（テスト用）
-        pcm = opusStream;
-      }
-
-      // PCM→PCMChunk(20 ms) に分割
-      const chunkedStream = chunkByFrame(pcm, BYTES_PER_CHUNK);
-      activeStreams.set(userId, chunkedStream);
-
-      // ストリーム終了時のクリーンアップ
-      pcm.on("end", () => {
-        activeStreams.delete(userId);
-      });
-    });
-
-    // アクティブなストリームから順番にチャンクを読み取る
-    const processedUsers = new Set<string>();
-
-    while (!this.shouldStop) {
-      let hasYielded = false;
-
-      for (const [userId, stream] of activeStreams) {
-        if (processedUsers.has(userId)) continue;
-
-        try {
-          const iterator = stream[Symbol.asyncIterator]();
-          const { value, done } = await iterator.next();
-
-          if (!done && value) {
-            yield { data: value, sampleRate: SAMPLE_RATE };
-            hasYielded = true;
-          } else if (done) {
-            // ストリームが終了したら即座に削除
-            processedUsers.add(userId);
-            activeStreams.delete(userId);
+      // Speaking イベントの監視
+      if (!this.isListening) {
+        this.isListening = true;
+        connection.receiver.speaking.on("start", (userId: string) => {
+          if (this.connectionManager.isConnected()) {
+            this.chunkStreamer.registerUser(userId, connection);
           }
-        } catch (_error) {
-          processedUsers.add(userId);
-          activeStreams.delete(userId);
+        });
+      }
+
+      // チャンクの生成
+      while (!this.shouldStop) {
+        // テストモードで maxChunks が 0 の場合は即座に終了
+        if (this.opts.test?.maxChunks === 0) {
+          this.shouldStop = true;
+          break;
+        }
+
+        const chunk = await this.chunkStreamer.getNextChunk();
+
+        if (chunk) {
+          yield { data: chunk.data, sampleRate: SAMPLE_RATE };
+          this.yieldCount++;
+
+          // テストモードで maxChunks に達したら停止
+          if (this.opts.test?.maxChunks && this.yieldCount >= this.opts.test.maxChunks) {
+            this.shouldStop = true;
+          }
+        } else if (!this.chunkStreamer.hasActiveStreams()) {
+          // アクティブなストリームがない場合は短時間待機
+          const sleepMs = this.opts.test?.idleSleepMs ?? 20;
+          await new Promise((resolve) => setTimeout(resolve, sleepMs));
         }
       }
-
-      // クリーンアップ
-      for (const userId of processedUsers) {
-        activeStreams.delete(userId);
-      }
-      processedUsers.clear();
-
-      if (!hasYielded) {
-        // アクティブなストリームがない場合は短時間待機
-        await new Promise((resolve) => setImmediate(resolve));
-      }
+    } catch (error) {
+      // エラーが発生した場合はクリーンアップ
+      this.stop();
+      throw error;
     }
   }
-}
-
-/**
- * Readable(PCM) を frameSize 分割し AsyncIterable<Buffer> へ
- */
-async function* chunkByFrame(stream: Readable, bytesPerChunk: number): AsyncIterable<Buffer> {
-  let left = Buffer.alloc(0);
-  for await (const data of stream) {
-    const buf: Buffer = data;
-    left = Buffer.concat([left, buf]);
-    while (left.length >= bytesPerChunk) {
-      yield left.subarray(0, bytesPerChunk);
-      left = left.subarray(bytesPerChunk);
-    }
-  }
-  // 端数は捨てる（1920バイト未満のチャンクは返さない）
 }
