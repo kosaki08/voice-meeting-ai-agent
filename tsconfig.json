@@ -16,6 +16,6 @@
       "@domain/*": ["./src/domain/*"]
     }
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts", "jest.config.ts", "tsup.config.ts"],
+  "include": ["src/**/*.ts", "tests/**/*.ts", "examples/**/*.ts", "jest.config.ts", "jest.integration.config.ts", "tsup.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

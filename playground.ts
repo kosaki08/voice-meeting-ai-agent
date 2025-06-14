@@ -11,7 +11,7 @@ dotenv.config({ path: ".env.local" });
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
   });
 
-  await client.login(process.env.DISCORD_TOKEN);
+  await client.login(process.env.DISCORD_TOKEN_RECEIVER);
 
   client.on("ready", async () => {
     console.log(`Logged in as ${client.user?.tag}!`);

@@ -1,5 +1,11 @@
 import { Readable } from "node:stream";
-import { EndBehaviorType, joinVoiceChannel, type DiscordGatewayAdapterCreator, type VoiceConnection } from "@discordjs/voice";
+import {
+  EndBehaviorType,
+  joinVoiceChannel,
+  VoiceConnectionStatus,
+  type DiscordGatewayAdapterCreator,
+  type VoiceConnection,
+} from "@discordjs/voice";
 import prism from "prism-media";
 import { AudioSourcePort, PCMChunk, SampleRate } from "../../ports/AudioSourcePort.js";
 
@@ -18,6 +24,7 @@ export interface DiscordAdapterOpts {
 export class DiscordAdapter implements AudioSourcePort {
   private connection?: VoiceConnection;
   private opts!: DiscordAdapterOpts;
+  private shouldStop = false;
 
   constructor(opts?: Partial<DiscordAdapterOpts>) {
     if (opts) this.configure(opts as DiscordAdapterOpts);
@@ -25,6 +32,14 @@ export class DiscordAdapter implements AudioSourcePort {
 
   configure(opts: DiscordAdapterOpts) {
     this.opts = opts;
+  }
+
+  stop() {
+    this.shouldStop = true;
+    if (this.connection) {
+      this.connection.destroy();
+      this.connection = undefined;
+    }
   }
 
   /**
@@ -41,6 +56,21 @@ export class DiscordAdapter implements AudioSourcePort {
         adapterCreator: this.opts.adapterCreator,
         selfDeaf: false, // 受信必須
         selfMute: true,
+      });
+
+      // 接続が確立されるまで待機
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error("Voice connection timeout")), 10000);
+
+        if (this.connection!.state.status === VoiceConnectionStatus.Ready) {
+          clearTimeout(timeout);
+          resolve();
+        } else {
+          this.connection!.once(VoiceConnectionStatus.Ready, () => {
+            clearTimeout(timeout);
+            resolve();
+          });
+        }
       });
     }
 
@@ -84,7 +114,7 @@ export class DiscordAdapter implements AudioSourcePort {
     // アクティブなストリームから順番にチャンクを読み取る
     const processedUsers = new Set<string>();
 
-    while (true) {
+    while (!this.shouldStop) {
       let hasYielded = false;
 
       for (const [userId, stream] of activeStreams) {
@@ -97,8 +127,10 @@ export class DiscordAdapter implements AudioSourcePort {
           if (!done && value) {
             yield { data: value, sampleRate: SAMPLE_RATE };
             hasYielded = true;
-          } else {
+          } else if (done) {
+            // ストリームが終了したら即座に削除
             processedUsers.add(userId);
+            activeStreams.delete(userId);
           }
         } catch (_error) {
           processedUsers.add(userId);
@@ -114,7 +146,7 @@ export class DiscordAdapter implements AudioSourcePort {
 
       if (!hasYielded) {
         // アクティブなストリームがない場合は短時間待機
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await new Promise((resolve) => setImmediate(resolve));
       }
     }
   }

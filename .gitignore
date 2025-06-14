@@ -30,3 +30,12 @@ yarn-error.log*
 
 # logs
 *.log
+
+# audio files
+*.pcm
+*.wav
+*.opus
+*.ogg
+# But keep test assets
+!tests/assets/*.ogg
+!tests/assets/*.opus
