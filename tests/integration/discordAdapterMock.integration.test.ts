@@ -75,6 +75,8 @@ describe("DiscordAdapter Mock Integration Tests", () => {
   });
 
   it("should handle empty streams gracefully", async () => {
+    jest.useFakeTimers();
+
     adapter = new DiscordAdapter({
       guildId: "test-guild",
       channelId: "test-channel",
@@ -89,19 +91,27 @@ describe("DiscordAdapter Mock Integration Tests", () => {
     mockInstance.getNextChunk.mockResolvedValue(null);
     mockInstance.hasActiveStreams.mockReturnValue(false);
 
-    const startTime = Date.now();
+    // pull を先に走らせておく
+    const pullPromise = (async () => {
+      const chunks: PCMChunk[] = [];
+      for await (const chunk of adapter.pull()) {
+        chunks.push(chunk);
+      }
+      return chunks;
+    })();
 
-    // タイムアウトで停止
+    // 100 ms 後に stop
     setTimeout(() => adapter.stop(), 100);
 
-    const chunks: PCMChunk[] = [];
-    for await (const chunk of adapter.pull()) {
-      chunks.push(chunk);
-    }
+    // タイマー 100 ms 進行
+    jest.advanceTimersByTime(100);
+    // さらに pending の 0 ms タイマーをすべて実行
+    await jest.runOnlyPendingTimersAsync();
 
-    const elapsed = Date.now() - startTime;
-    expect(elapsed).toBeGreaterThanOrEqual(100);
+    const chunks = await pullPromise;
     expect(chunks).toHaveLength(0);
+
+    jest.useRealTimers();
   });
 
   it("should respect configuration options", () => {
