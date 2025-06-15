@@ -16,6 +16,10 @@ const envSchema = z.object({
   // OpenAI API（オプション）
   OPENAI_API_KEY: z.string().optional(),
 
+  // Whisper設定
+  WHISPER_MODEL: z.string().default("whisper-1"),
+  WHISPER_CHUNK_MS: z.preprocess((val) => (typeof val === "string" ? parseInt(val, 10) : val), z.number().int().positive().default(1000)),
+
   // Anthropic API（オプション）
   ANTHROPIC_API_KEY: z.string().optional(),
 

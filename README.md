@@ -1,9 +1,6 @@
 # Voice Meeting AI Agent
 
-[![CI](https://github.com/k2004/voice-meeting-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/k2004/voice-meeting-ai-agent/actions)
-[![codecov](https://codecov.io/gh/k2004/voice-meeting-ai-agent/branch/main/graph/badge.svg)](https://codecov.io/gh/k2004/voice-meeting-ai-agent)
-
-Discord Voice Channel から音声をリアルタイムに取得し、後から Whisperでの文字起こしを差し込める形に切り出したプロジェクトです。
+Discord Voice Channel から音声をリアルタイムに取得し、OpenAI Whisper APIで文字起こしを行うプロジェクトです。
 
 ## デモ
 
@@ -16,6 +13,15 @@ pnpm example:audio
 ```bash
 pnpm install                      # 依存解決
 cp .env.local.example .env.local  # トークン設定
+# .env.local に以下を設定:
+# - DISCORD_BOT_TOKEN
+# - DISCORD_GUILD_ID
+# - DISCORD_CHANNEL_ID
+# - OPENAI_API_KEY (Whisper転写用)
+
+# macOS/Linuxの場合、FFmpegの実行権限を確認
+[ -f node_modules/ffmpeg-static/ffmpeg ] && chmod +x node_modules/ffmpeg-static/ffmpeg || true
+
 pnpm dev                          # 実行
 ```
 
@@ -36,7 +42,9 @@ examples/     # 実行サンプル
 
 - **TypeScript 5 / pnpm** - 型安全性とモダンなパッケージ管理
 - **discord.js 14 + @discordjs/voice** - Discord音声チャンネル接続
-- **Hexagonal Architecture** - 音声入力源の切り替えが容易
+- **OpenAI Whisper API** - リアルタイム音声認識
+- **ffmpeg (child_process)** - 音声ストリームのリサンプリング (48kHz → 16kHz)
+- **Hexagonal Architecture** - 音声入力源・転写エンジンの切り替え
 - **Jest + ts-jest** - 高速なテスト実行
 - **GitHub Actions CI** - 自動テスト・カバレッジ計測
 
