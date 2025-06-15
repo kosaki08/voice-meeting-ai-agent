@@ -1,9 +1,8 @@
 # Voice Meeting AI Agent
 
-[![CI](https://github.com/k2004/voice-meeting-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/k2004/voice-meeting-ai-agent/actions)
-[![codecov](https://codecov.io/gh/k2004/voice-meeting-ai-agent/branch/main/graph/badge.svg)](https://codecov.io/gh/k2004/voice-meeting-ai-agent)
-
 Discord Voice Channel から音声をリアルタイムに取得し、後から Whisperでの文字起こしを差し込める形に切り出したプロジェクトです。
+
+- Whisper統合作業ブランチ: [feature/whisper-integration](https://github.com/kosaki08/voice-meeting-ai-agent/tree/feature/whisper-integration)
 
 ## デモ
 
